@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Fullscreen Video Gallery</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow: hidden;
+        }
+
+        /* Container utama galeri */
+        #gallery {
+            width: 100vw;
+            height: 100vh;
+            overflow-y: scroll;
+            scroll-snap-type: y mandatory;
+            scroll-behavior: smooth;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+            cursor: grab;
+        }
+
+        #gallery::-webkit-scrollbar {
+            display: none;
+        }
+
+        #gallery:active {
+            cursor: grabbing;
+        }
+
+        /* Setiap slide video */
+        .slide {
+            width: 100vw;
+            height: 100vh;
+            scroll-snap-align: start;
+            scroll-snap-stop: always;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Wrapper video untuk Zoom & Pan */
+        .zoom-wrapper {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transform-origin: center center;
+            transition: transform 0.15s ease-out;
+            will-change: transform;
+        }
+
+        .slide video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            pointer-events: none;
+        }
+
+        /* Lapisan pelindung transparan anti klik-kanan & drag */
+        .protect-shield {
+            position: absolute;
+            inset: 0;
+            z-index: 10;
+            background: transparent;
+        }
+
+        /* Tombol Play besar di tengah setiap video */
+        .center-play-btn {
+            position: absolute;
+            z-index: 20;
+            width: 74px;
+            height: 74px;
+            border-radius: 50%;
+            background: rgba(20, 20, 20, 0.72);
+            backdrop-filter: blur(8px);
+            border: 2px solid rgba(255, 255, 255, 0.65);
+            color: #fff;
+            font-size: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding-left: 5px;
+            cursor: pointer;
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+            transition: transform 0.15s ease, opacity 0.2s ease, background 0.2s ease;
+        }
+
+        .center-play-btn:hover {
+            transform: scale(1.08);
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        .center-play-btn.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(0.85);
+        }
+
+        /* Kontrol melayang di bawah */
+        .hud {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(18, 18, 18, 0.78);
+            backdrop-filter: blur(10px);
+            padding: 8px 16px;
+            border-radius: 30px;
+            font-size: 13px;
+            z-index: 200;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            white-space: nowrap;
+        }
+
+        .badge {
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.12);
+            color: #ccc;
+            max-width: 140px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .hud button {
+            background: rgba(255, 255, 255, 0.15);
+            border: none;
+            color: #fff;
+            padding: 5px 11px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+
+        .hud button:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .zoom-controls {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            border-left: 1px solid rgba(255, 255, 255, 0.2);
+            padding-left: 10px;
+        }
+
+        #zoomLevelText {
+            font-size: 12px;
+            min-width: 38px;
+            text-align: center;
+            color: #ddd;
+        }
+
+        /* Tombol navigasi atas/bawah di layar besar */
+        .nav-btn {
+            position: fixed;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: white;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 200;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        .nav-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        #prevBtn { top: calc(50% - 50px); }
+        #nextBtn { top: calc(50% + 10px); }
+
+        @media (max-width: 768px) {
+            .nav-btn { display: none; }
+            .hud {
+                padding: 7px 12px;
+                gap: 7px;
+                font-size: 12px;
+            }
+            .badge { display: none; }
+        }
+    </style>
+</head>
+<body oncontextmenu="return false;" ondragstart="return false;" onselectstart="return false;">
+
+    <div id="gallery"></div>
+
+    <button class="nav-btn" id="prevBtn" title="Sebelumnya">▲</button>
+    <button class="nav-btn" id="nextBtn" title="Berikutnya">▼</button>
+
+    <div class="hud">
+        <span id="counter">0 / 0</span>
+        <span id="statusBadge" class="badge">Memuat...</span>
+        <button id="muteBtn" title="Suara">🔊 Suara</button>
+        <button id="fitBtn">Fit</button>
+        <div class="zoom-controls">
+            <button id="zoomOutBtn" title="Perkecil">−</button>
+            <span id="zoomLevelText">1.0x</span>
+            <button id="zoomInBtn" title="Perbesar">+</button>
+            <button id="zoomResetBtn" title="Reset Zoom">Reset</button>
+        </div>
+    </div>
+
+    <script>
+        // =====================================================================
+        // PROTEKSI ANTI-DOWNLOAD & ANTI-INSPECT PINTASAN
+        // =====================================================================
+        document.addEventListener('contextmenu', e => e.preventDefault());
+        document.addEventListener('dragstart', e => e.preventDefault());
+        document.addEventListener('keydown', (e) => {
+            if (
+                (e.ctrlKey && ['s', 'u', 'p', 'a'].includes(e.key.toLowerCase())) ||
+                (e.ctrlKey && e.shiftKey && ['i', 'j', 'c'].includes(e.key.toLowerCase())) ||
+                e.key === 'F12'
+            ) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // =====================================================================
+        // KONFIGURASI FOLDER VIDEO (AUTO-DETEKSI GITHUB PAGES & LOKAL)
+        // =====================================================================
+        // Otomatis mendeteksi username & nama repo jika dibuka di *.github.io!
+        // Jika ingin menimpa secara manual, isi string di bawah ini (misal: 'username-anda')
+        const MANUAL_GITHUB_USER = '';
+        const MANUAL_GITHUB_REPO = '';
+        const FOLDER = 'vid';
+        // =====================================================================
+
+        const gallery = document.getElementById('gallery');
+        const counter = document.getElementById('counter');
+        const statusBadge = document.getElementById('statusBadge');
+        const fitBtn = document.getElementById('fitBtn');
+        const muteBtn = document.getElementById('muteBtn');
+        const zoomLevelText = document.getElementById('zoomLevelText');
+
+        let isCover = false;
+        let isMuted = false;
+        let totalSlides = 0;
+
+        const slideInfos = [];
+        const slideZoomStates = [];
+        const videoElements = [];
+        const playButtons = [];
+
+        function addSlide(rawUrl, displayName) {
+            const slideIndex = totalSlides;
+            totalSlides++;
+
+            const fileName = displayName || decodeURIComponent(rawUrl.split('/').pop());
+
+            const slide = document.createElement('div');
+            slide.className = 'slide';
+
+            // Wrapper untuk efek Zoom & Pan
+            const zoomWrapper = document.createElement('div');
+            zoomWrapper.className = 'zoom-wrapper';
+
+            const video = document.createElement('video');
+            video.src = rawUrl;
+            video.loop = true;
+            video.playsInline = true;
+            video.preload = 'metadata';
+            video.muted = isMuted;
+            video.style.objectFit = isCover ? 'cover' : 'contain';
+            video.setAttribute('controlsList', 'nodownload');
+            video.setAttribute('disablePictureInPicture', 'true');
+
+            // Hapus slide otomatis jika file gagal dimuat
+            video.onerror = () => {
+                slide.remove();
+                videoElements[slideIndex] = null;
+                recalculateSlides();
+            };
+
+            // Lapisan pelindung anti-download / klik kanan
+            const shield = document.createElement('div');
+            shield.className = 'protect-shield';
+
+            // Tombol Play di tengah setiap video
+            const playBtn = document.createElement('button');
+            playBtn.className = 'center-play-btn';
+            playBtn.innerHTML = '▶';
+            playBtn.title = 'Putar Video';
+
+            playBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                togglePlayVideo(slideIndex);
+            });
+
+            // Sinkronkan tampilan tombol play saat status video berubah
+            video.addEventListener('play', () => playBtn.classList.add('hidden'));
+            video.addEventListener('pause', () => playBtn.classList.remove('hidden'));
+
+            zoomWrapper.appendChild(video);
+            slide.appendChild(zoomWrapper);
+            slide.appendChild(shield);
+            slide.appendChild(playBtn);
+            gallery.appendChild(slide);
+
+            videoElements[slideIndex] = video;
+            playButtons[slideIndex] = playBtn;
+            slideInfos[slideIndex] = { info: fileName };
+            slideZoomStates[slideIndex] = { scale: 1, x: 0, y: 0, wrapper: zoomWrapper };
+
+            setupSlideInteraction(slide, slideIndex, video);
+        }
+
+        function togglePlayVideo(index) {
+            const video = videoElements[index];
+            if (!video) return;
+
+            if (video.paused) {
+                videoElements.forEach((v, i) => {
+                    if (v && i !== index && !v.paused) v.pause();
+                });
+                video.muted = isMuted;
+                video.play().catch(() => {
+                    isMuted = true;
+                    video.muted = true;
+                    muteBtn.textContent = '🔇 Muted';
+                    video.play().catch(() => {});
+                });
+            } else {
+                video.pause();
+            }
+        }
+
+        function recalculateSlides() {
+            const activeSlides = gallery.querySelectorAll('.slide');
+            totalSlides = activeSlides.length;
+            updateHUD();
+        }
+
+        // =====================================================================
+        // LOGIKA ZOOM IN / OUT & PAN (GESER SAAT DI-ZOOM)
+        // =====================================================================
+        function getCurrentSlideIndex() {
+            if (totalSlides === 0) return 0;
+            return Math.min(Math.round(gallery.scrollTop / window.innerHeight), totalSlides - 1);
+        }
+
+        function applyTransform(index, instant = false) {
+            const state = slideZoomStates[index];
+            if (!state) return;
+
+            const maxPanX = (window.innerWidth * (state.scale - 1)) / 2;
+            const maxPanY = (window.innerHeight * (state.scale - 1)) / 2;
+            state.x = Math.max(-maxPanX, Math.min(maxPanX, state.x));
+            state.y = Math.max(-maxPanY, Math.min(maxPanY, state.y));
+
+            if (state.scale <= 1) {
+                state.scale = 1;
+                state.x = 0;
+                state.y = 0;
+            }
+
+            state.wrapper.style.transition = instant ? 'none' : 'transform 0.15s ease-out';
+            state.wrapper.style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`;
+
+            if (index === getCurrentSlideIndex()) {
+                gallery.style.overflowY = state.scale > 1 ? 'hidden' : 'scroll';
+                zoomLevelText.textContent = `${state.scale.toFixed(1)}x`;
+            }
+        }
+
+        function setZoom(index, newScale) {
+            const state = slideZoomStates[index];
+            if (!state) return;
+            state.scale = Math.max(1, Math.min(4, newScale));
+            applyTransform(index);
+        }
+
+        function setupSlideInteraction(slide, index, video) {
+            let lastTap = 0;
+            let singleClickTimer = null;
+
+            slide.addEventListener('click', () => {
+                const now = Date.now();
+                if (now - lastTap < 280) {
+                    clearTimeout(singleClickTimer);
+                    const state = slideZoomStates[index];
+                    if (state.scale > 1) {
+                        setZoom(index, 1);
+                    } else {
+                        setZoom(index, 2.5);
+                    }
+                } else {
+                    singleClickTimer = setTimeout(() => {
+                        togglePlayVideo(index);
+                    }, 280);
+                }
+                lastTap = now;
+            });
+
+            slide.addEventListener('wheel', (e) => {
+                const state = slideZoomStates[index];
+                if (e.ctrlKey || state.scale > 1) {
+                    e.preventDefault();
+                    const delta = e.deltaY < 0 ? 0.3 : -0.3;
+                    setZoom(index, state.scale + delta);
+                }
+            }, { passive: false });
+
+            let isPanning = false;
+            let startX = 0, startY = 0;
+
+            slide.addEventListener('mousedown', (e) => {
+                const state = slideZoomStates[index];
+                if (state.scale <= 1) return;
+                e.stopPropagation();
+                isPanning = true;
+                startX = e.clientX - state.x;
+                startY = e.clientY - state.y;
+                slide.style.cursor = 'grabbing';
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isPanning) return;
+                const state = slideZoomStates[index];
+                state.x = e.clientX - startX;
+                state.y = e.clientY - startY;
+                applyTransform(index, true);
+            });
+
+            window.addEventListener('mouseup', () => {
+                if (isPanning) {
+                    isPanning = false;
+                    slide.style.cursor = 'grab';
+                }
+            });
+
+            let initialPinchDist = null;
+            let initialScale = 1;
+            let touchStartX = 0, touchStartY = 0;
+
+            slide.addEventListener('touchstart', (e) => {
+                const state = slideZoomStates[index];
+                if (e.touches.length === 2) {
+                    initialPinchDist = Math.hypot(
+                        e.touches[0].clientX - e.touches[1].clientX,
+                        e.touches[0].clientY - e.touches[1].clientY
+                    );
+                    initialScale = state.scale;
+                } else if (e.touches.length === 1 && state.scale > 1) {
+                    touchStartX = e.touches[0].clientX - state.x;
+                    touchStartY = e.touches[0].clientY - state.y;
+                }
+            }, { passive: true });
+
+            slide.addEventListener('touchmove', (e) => {
+                const state = slideZoomStates[index];
+                if (e.touches.length === 2 && initialPinchDist) {
+                    e.preventDefault();
+                    const currentDist = Math.hypot(
+                        e.touches[0].clientX - e.touches[1].clientX,
+                        e.touches[0].clientY - e.touches[1].clientY
+                    );
+                    const scaleFactor = currentDist / initialPinchDist;
+                    state.scale = Math.max(1, Math.min(4, initialScale * scaleFactor));
+                    applyTransform(index, true);
+                } else if (e.touches.length === 1 && state.scale > 1) {
+                    e.preventDefault();
+                    state.x = e.touches[0].clientX - touchStartX;
+                    state.y = e.touches[0].clientY - touchStartY;
+                    applyTransform(index, true);
+                }
+            }, { passive: false });
+
+            slide.addEventListener('touchend', () => {
+                initialPinchDist = null;
+            });
+        }
+
+        document.getElementById('zoomInBtn').addEventListener('click', () => {
+            const idx = getCurrentSlideIndex();
+            if (slideZoomStates[idx]) setZoom(idx, slideZoomStates[idx].scale + 0.5);
+        });
+
+        document.getElementById('zoomOutBtn').addEventListener('click', () => {
+            const idx = getCurrentSlideIndex();
+            if (slideZoomStates[idx]) setZoom(idx, slideZoomStates[idx].scale - 0.5);
+        });
+
+        document.getElementById('zoomResetBtn').addEventListener('click', () => {
+            const idx = getCurrentSlideIndex();
+            if (slideZoomStates[idx]) setZoom(idx, 1);
+        });
+
+        muteBtn.addEventListener('click', () => {
+            isMuted = !isMuted;
+            muteBtn.textContent = isMuted ? '🔇 Muted' : '🔊 Suara';
+            videoElements.forEach(vid => {
+                if (vid) vid.muted = isMuted;
+            });
+        });
+
+        // =====================================================================
+        // DETEKSI OTOMATIS REPO GITHUB & MUAT SEMUA FILE VIDEO DI FOLDER 'vid'
+        // =====================================================================
+        function detectGitHubInfo() {
+            if (MANUAL_GITHUB_USER && MANUAL_GITHUB_REPO) {
+                return { owner: MANUAL_GITHUB_USER, repo: MANUAL_GITHUB_REPO, subPath: '' };
+            }
+            const host = window.location.hostname;
+            const pathParts = window.location.pathname.split('/').filter(Boolean);
+
+            if (host.endsWith('.github.io')) {
+                const owner = host.replace('.github.io', '');
+                // Cek apakah project site (username.github.io/nama-repo/) atau user site (username.github.io/)
+                const repo = pathParts.length > 0 ? pathParts[0] : `${owner}.github.io`;
+                // Jika index.html berada di dalam subfolder di dalam repo
+                const dirParts = pathParts.slice(1);
+                if (dirParts.length > 0 && dirParts[dirParts.length - 1].includes('.')) {
+                    dirParts.pop();
+                }
+                const subPath = dirParts.join('/');
+                return { owner, repo, subPath };
+            }
+            return null;
+        }
+
+        async function init() {
+            const videoRegex = /\.(mp4|webm|mov|mkv|ogg|m4v)$/i;
+
+            // 1. Jika dibuka di GitHub Pages (*.github.io) atau MANUAL_GITHUB_USER diisi
+            const ghInfo = detectGitHubInfo();
+            if (ghInfo) {
+                try {
+                    statusBadge.textContent = 'Memindai GitHub...';
+                    const targetFolder = ghInfo.subPath ? `${ghInfo.subPath}/${FOLDER}` : FOLDER;
+                    const cacheKey = `gh_vid_list_${ghInfo.owner}_${ghInfo.repo}_${targetFolder}`;
+
+                    let fileNames = null;
+                    const cached = sessionStorage.getItem(cacheKey);
+                    if (cached) {
+                        fileNames = JSON.parse(cached);
+                    } else {
+                        const apiUrl = `https://api.github.com/repos/${ghInfo.owner}/${ghInfo.repo}/contents/${targetFolder}`;
+                        const res = await fetch(apiUrl);
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                        const items = await res.json();
+
+                        fileNames = items
+                            .filter(item => item.type === 'file' && videoRegex.test(item.name))
+                            .map(item => item.name)
+                            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+                        sessionStorage.setItem(cacheKey, JSON.stringify(fileNames));
+                    }
+
+                    if (fileNames && fileNames.length > 0) {
+                        fileNames.forEach(name => {
+                            addSlide(`${FOLDER}/${encodeURIComponent(name)}`, name);
+                        });
+                        updateHUD();
+                        return;
+                    } else {
+                        statusBadge.textContent = 'Folder vid kosong';
+                        return;
+                    }
+                } catch (err) {
+                    console.warn('GitHub API fallback:', err);
+                    statusBadge.textContent = 'Gagal baca API';
+                }
+            }
+
+            // 2. Fallback untuk server lokal (Live Server / Python http.server / Nginx / Apache)
+            try {
+                const res = await fetch(`${FOLDER}/`);
+                if (res.ok) {
+                    const html = await res.text();
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const links = Array.from(doc.querySelectorAll('a'))
+                        .map(a => a.getAttribute('href'))
+                        .filter(href => href && videoRegex.test(href))
+                        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+                    if (links.length > 0) {
+                        links.forEach(href => {
+                            const cleanName = decodeURIComponent(href.split('/').pop());
+                            addSlide(`${FOLDER}/${encodeURIComponent(cleanName)}`, cleanName);
+                        });
+                        updateHUD();
+                        return;
+                    }
+                }
+            } catch (e) {}
+
+            statusBadge.textContent = 'Tidak ada video';
+            counter.textContent = '0 Video';
+        }
+
+        let lastActiveIdx = -1;
+
+        function updateHUD() {
+            const slides = gallery.querySelectorAll('.slide');
+            totalSlides = slides.length;
+            if (totalSlides === 0) {
+                counter.textContent = '0 Video';
+                return;
+            }
+
+            const currentIdx = getCurrentSlideIndex();
+            counter.textContent = `${currentIdx + 1} / ${totalSlides}`;
+
+            if (slideInfos[currentIdx]) {
+                statusBadge.textContent = slideInfos[currentIdx].info;
+            }
+
+            if (currentIdx !== lastActiveIdx) {
+                videoElements.forEach((v, idx) => {
+                    if (v && idx !== currentIdx && !v.paused) v.pause();
+                });
+                lastActiveIdx = currentIdx;
+            }
+        }
+
+        gallery.addEventListener('scroll', updateHUD);
+
+        fitBtn.addEventListener('click', () => {
+            isCover = !isCover;
+            fitBtn.textContent = isCover ? 'Cover' : 'Fit';
+            document.querySelectorAll('.slide video').forEach(vid => {
+                vid.style.objectFit = isCover ? 'cover' : 'contain';
+            });
+        });
+
+        function goToSlide(dir) {
+            const currentIdx = getCurrentSlideIndex();
+            if (slideZoomStates[currentIdx] && slideZoomStates[currentIdx].scale > 1) {
+                setZoom(currentIdx, 1);
+            }
+            gallery.scrollTo({
+                top: gallery.scrollTop + (dir * window.innerHeight),
+                behavior: 'smooth'
+            });
+        }
+
+        document.getElementById('prevBtn').addEventListener('click', () => goToSlide(-1));
+        document.getElementById('nextBtn').addEventListener('click', () => goToSlide(1));
+
+        window.addEventListener('keydown', (e) => {
+            const idx = getCurrentSlideIndex();
+            if (e.key === '+' || e.key === '=') {
+                e.preventDefault();
+                if (slideZoomStates[idx]) setZoom(idx, slideZoomStates[idx].scale + 0.5);
+            } else if (e.key === '-') {
+                e.preventDefault();
+                if (slideZoomStates[idx]) setZoom(idx, slideZoomStates[idx].scale - 0.5);
+            } else if (e.key === '0') {
+                e.preventDefault();
+                if (slideZoomStates[idx]) setZoom(idx, 1);
+            } else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+                e.preventDefault();
+                goToSlide(1);
+            } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+                e.preventDefault();
+                goToSlide(-1);
+            } else if (e.key === ' ') {
+                e.preventDefault();
+                togglePlayVideo(idx);
+            } else if (e.key.toLowerCase() === 'm') {
+                muteBtn.click();
+            }
+        });
+
+        let isDown = false;
+        let startY = 0;
+        let scrollTopStart = 0;
+
+        gallery.addEventListener('mousedown', (e) => {
+            const idx = getCurrentSlideIndex();
+            if (slideZoomStates[idx] && slideZoomStates[idx].scale > 1) return;
+
+            isDown = true;
+            gallery.style.scrollSnapType = 'none';
+            gallery.style.scrollBehavior = 'auto';
+            startY = e.pageY;
+            scrollTopStart = gallery.scrollTop;
+        });
+
+        const stopDrag = () => {
+            if (!isDown) return;
+            isDown = false;
+            gallery.style.scrollBehavior = 'smooth';
+            gallery.style.scrollSnapType = 'y mandatory';
+            const target = Math.round(gallery.scrollTop / window.innerHeight);
+            gallery.scrollTo({ top: target * window.innerHeight, behavior: 'smooth' });
+        };
+
+        gallery.addEventListener('mouseup', stopDrag);
+        gallery.addEventListener('mouseleave', stopDrag);
+
+        gallery.addEventListener('mousemove', (e) => {
+            if (!isDown) return;
+            e.preventDefault();
+            const walk = (e.pageY - startY) * 1.5;
+            gallery.scrollTop = scrollTopStart - walk;
+        });
+
+        init();
+    </script>
+</body>
+</html>
